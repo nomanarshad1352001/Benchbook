@@ -1,3 +1,9 @@
+/* =========================================================================
+   legacy compatibility v1 helpers — the live public API is consolidated in
+   src/app/api/v1/[...v1path]/route.ts (serverless sandbox, no DB). These
+   remain so stale DB-era v1 route files in out-of-sync checkouts compile.
+   ========================================================================= */
+
 import { db } from "@/db";
 import { apiKeys } from "@/db/schema";
 import type { clients, jobs } from "@/db/schema";

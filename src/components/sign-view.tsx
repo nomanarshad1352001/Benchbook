@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BadgeCheck, Check, Eraser, Loader2, PenLine, ShieldCheck, Wrench } from "lucide-react";
+import { BadgeCheck, Check, CloudDownload, Eraser, Loader2, PenLine, ShieldCheck, Wrench } from "lucide-react";
 import { COMPANY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { downloadFormPdf } from "@/lib/store";
 
 export default function SignView(props: {
   token: string;
+  formId?: number;
   docName: string;
   content: string;
   status: string;
   clientName: string;
   clientEmail: string;
   jobTitle: string;
+  ephemeral?: boolean;
   signed: {
     signerName: string | null;
     signedAt: string | null;
@@ -20,7 +23,7 @@ export default function SignView(props: {
     signatureUrl: string | null;
   };
 }) {
-  const { token, docName, content, clientName, clientEmail, jobTitle, signed } = props;
+  const { token, formId, docName, content, clientName, clientEmail, jobTitle, ephemeral, signed } = props;
   const [name, setName] = useState(clientName);
   const [email, setEmail] = useState(clientEmail);
   const [note, setNote] = useState("");
@@ -28,13 +31,12 @@ export default function SignView(props: {
   const [hasInk, setHasInk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null); // movedTo stage or "signed"
+  const [done, setDone] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
 
-  /* hi-dpi canvas setup */
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -85,10 +87,7 @@ export default function SignView(props: {
     }
     last.current = p;
   }
-  function up() {
-    drawing.current = false;
-    last.current = null;
-  }
+  function up() { drawing.current = false; last.current = null; }
   function clearPad() {
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
@@ -101,6 +100,12 @@ export default function SignView(props: {
     setBusy(true);
     setError(null);
     try {
+      if (ephemeral) {
+        // document decoded from the share link on a device without this workspace
+        setDone("signed");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       const signature = canvasRef.current.toDataURL("image/png");
       const res = await fetch("/api/forms/sign", {
         method: "POST",
@@ -123,7 +128,6 @@ export default function SignView(props: {
 
   return (
     <main className="min-h-dvh bg-canvas">
-      {/* brand bar */}
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-5xl items-center gap-2.5 px-4 py-3.5 sm:px-6">
           <span className="grid size-9 place-items-center rounded-xl bg-ink text-accent">
@@ -134,7 +138,7 @@ export default function SignView(props: {
             <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-soft">Secure document signing</p>
           </div>
           <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 sm:flex">
-            <ShieldCheck className="size-3.5" /> Encrypted session
+            <ShieldCheck className="size-3.5" /> Tamper-evident audit trail
           </span>
         </div>
       </header>
@@ -148,6 +152,8 @@ export default function SignView(props: {
             signatureUrl={alreadySigned ? signed.signatureUrl : null}
             movedTo={done && done !== "signed" ? done : null}
             docName={docName}
+            formId={!ephemeral ? formId : undefined}
+            ephemeral={!!ephemeral}
           />
         ) : (
           <>
@@ -159,7 +165,6 @@ export default function SignView(props: {
             </div>
 
             <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
-              {/* document */}
               <article className="card animate-rise overflow-hidden [animation-delay:80ms]">
                 <div className="h-1.5 bg-gradient-to-r from-accent via-amber-300 to-transparent" />
                 <pre className="whitespace-pre-wrap px-6 py-7 font-sans text-[13.5px] leading-[1.75] text-ink sm:px-9 sm:py-9">
@@ -167,7 +172,6 @@ export default function SignView(props: {
                 </pre>
               </article>
 
-              {/* sign panel */}
               <aside className="card sticky top-6 animate-rise space-y-4 p-5 [animation-delay:160ms]">
                 <h2 className="flex items-center gap-2 font-display text-[15px] font-bold">
                   <PenLine className="size-4 text-accent-deep" /> Sign this document
@@ -249,7 +253,10 @@ function SignedState(props: {
   signatureUrl: string | null;
   movedTo: string | null;
   docName: string;
+  formId?: number;
+  ephemeral: boolean;
 }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
   return (
     <div className="mx-auto max-w-md">
       <div className="card animate-pop p-8 text-center">
@@ -274,11 +281,29 @@ function SignedState(props: {
         )}
         {props.movedTo && (
           <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-[13px] font-semibold text-emerald-700">
-            Done — the job automatically moved to “{props.movedTo}” on our board.
+            Done — the job automatically moved to &ldquo;{props.movedTo}&rdquo; on our board.
           </p>
         )}
+
+        {props.formId && (
+          <button
+            onClick={async () => {
+              setPdfBusy(true);
+              try { await downloadFormPdf(props.formId!); } finally { setPdfBusy(false); }
+            }}
+            disabled={pdfBusy}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-ink py-2.5 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
+          >
+            {pdfBusy ? <Loader2 className="size-4 animate-spin" /> : <CloudDownload className="size-4" />}
+            Download signed PDF copy
+          </button>
+        )}
+
         <p className="mt-4 text-xs text-ink-soft">
-          A signed PDF copy and audit trail were filed automatically. Questions? Call {COMPANY.phone}.
+          {props.ephemeral
+            ? "Your signature was captured on this device. The office copy files itself the moment the link is opened where the workspace lives."
+            : "A signed PDF copy and audit trail were filed automatically."}{" "}
+          Questions? Call {COMPANY.phone}.
         </p>
       </div>
     </div>

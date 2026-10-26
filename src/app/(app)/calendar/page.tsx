@@ -1,58 +1,33 @@
-import { db } from "@/db";
-import { appointments, clients, jobs, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+"use client";
+
 import CalendarView from "@/components/calendar-view";
+import { useData, useReady } from "@/lib/store";
+import { BootScreen } from "@/app/(app)/layout";
 
-export const dynamic = "force-dynamic";
+export default function CalendarPage() {
+  const ready = useReady();
+  const d = useData();
+  if (!ready) return <BootScreen />;
 
-export default async function CalendarPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
-  const sp = await searchParams;
-
-  const [rows, team, clientOpts, jobOpts] = await Promise.all([
-    db
-      .select({
-        a: appointments,
-        clientName: clients.name,
-        jobTitle: jobs.title,
-        assigneeName: users.name,
-        assigneeColor: users.color,
-      })
-      .from(appointments)
-      .innerJoin(clients, eq(appointments.clientId, clients.id))
-      .leftJoin(jobs, eq(appointments.jobId, jobs.id))
-      .leftJoin(users, eq(appointments.assigneeId, users.id)),
-    db.select({ id: users.id, name: users.name, color: users.color, role: users.role }).from(users),
-    db.select({ id: clients.id, name: clients.name }).from(clients),
-    db
-      .select({ id: jobs.id, title: jobs.title, clientId: jobs.clientId, stage: jobs.stage })
-      .from(jobs),
-  ]);
+  const sp = Object.fromEntries(new URLSearchParams(window.location.search));
 
   return (
     <CalendarView
-      appointments={rows.map((r) => ({
-        id: r.a.id,
-        title: r.a.title,
-        type: r.a.type,
-        startsAt: r.a.startsAt.toISOString(),
-        endsAt: r.a.endsAt.toISOString(),
-        notes: r.a.notes,
-        status: r.a.status,
-        clientId: r.a.clientId,
-        clientName: r.clientName,
-        jobId: r.a.jobId,
-        jobTitle: r.jobTitle,
-        assigneeId: r.a.assigneeId,
-        assigneeName: r.assigneeName ?? "Unassigned",
-        assigneeColor: r.assigneeColor ?? "#94a3b8",
-      }))}
-      team={team}
-      clients={clientOpts.sort((a, b) => a.name.localeCompare(b.name))}
-      jobs={jobOpts.filter((j) => j.stage !== "paid" && j.stage !== "lost")}
+      appointments={d.appointments.map((a) => {
+        const client = d.clients.find((c) => c.id === a.clientId);
+        const job = d.jobs.find((j) => j.id === a.jobId);
+        const user = d.users.find((u) => u.id === a.assigneeId);
+        return {
+          id: a.id, title: a.title, type: a.type, startsAt: a.startsAt, endsAt: a.endsAt,
+          notes: a.notes, status: a.status, clientId: a.clientId, clientName: client?.name ?? "—",
+          jobId: a.jobId, jobTitle: job?.title ?? null,
+          assigneeId: a.assigneeId, assigneeName: user?.name ?? "Unassigned",
+          assigneeColor: user?.color ?? "#94a3b8",
+        };
+      })}
+      team={d.users.map((u) => ({ id: u.id, name: u.name, color: u.color, role: u.role }))}
+      clients={[...d.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, name: c.name }))}
+      jobs={d.jobs.filter((j) => j.stage !== "paid" && j.stage !== "lost").map((j) => ({ id: j.id, title: j.title, clientId: j.clientId }))}
       openNew={sp.new === "1"}
       presetClientId={sp.client ? Number(sp.client) : null}
       presetJobId={sp.job ? Number(sp.job) : null}

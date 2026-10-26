@@ -1,78 +1,54 @@
+"use client";
+
 import Link from "next/link";
 import {
-  ArrowRight,
-  Banknote,
-  Briefcase,
-  CalendarCheck2,
-  CalendarClock,
-  FileSignature,
-  PhoneCall,
-  Ruler,
-  Wrench,
+  ArrowRight, Banknote, Briefcase, CalendarCheck2, CalendarClock,
+  FileSignature, PhoneCall, Ruler, Wrench,
 } from "lucide-react";
-import { db } from "@/db";
-import { activities, appointments, clients, forms, jobs, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { getSessionUser } from "@/lib/auth";
-import { computeTotals } from "@/lib/ops";
 import { FORM_PHASES, STAGES } from "@/lib/constants";
-import { cn, fmtTime, money, moneyCompact, sameDay, timeAgo } from "@/lib/utils";
-
-export const dynamic = "force-dynamic";
+import { computeTotals } from "@/lib/model";
+import { auth, useData, useReady } from "@/lib/store";
+import { cn, fmtTime, moneyCompact, sameDay, timeAgo } from "@/lib/utils";
+import { BootScreen } from "@/app/(app)/layout";
 
 const TYPE_ICON: Record<string, typeof Wrench> = { estimate: Ruler, job: Wrench, callback: PhoneCall };
 
-export default async function DashboardPage() {
-  const me = (await getSessionUser())!;
+export default function DashboardPage() {
+  const ready = useReady();
+  const d = useData();
+  if (!ready) return <BootScreen />;
+
+  const me = d.users.find((u) => u.id === auth.uid) ?? d.users[0];
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [allJobs, team] = await Promise.all([
-    db.select().from(jobs),
-    db.select().from(users),
-  ]);
-  const appts = await db
-    .select({
-      a: appointments,
-      clientName: clients.name,
-      jobTitle: jobs.title,
-      assigneeName: users.name,
-      assigneeColor: users.color,
-    })
-    .from(appointments)
-    .innerJoin(clients, eq(appointments.clientId, clients.id))
-    .leftJoin(jobs, eq(appointments.jobId, jobs.id))
-    .leftJoin(users, eq(appointments.assigneeId, users.id));
-
-  const pendingForms = await db
-    .select({ f: forms, jobTitle: jobs.title, clientName: clients.name })
-    .from(forms)
-    .innerJoin(jobs, eq(forms.jobId, jobs.id))
-    .innerJoin(clients, eq(forms.clientId, clients.id));
-
-  const acts = await db
-    .select({ act: activities, userName: users.name, userColor: users.color })
-    .from(activities)
-    .leftJoin(users, eq(activities.userId, users.id));
-
-  const activeJobs = allJobs.filter((j) => j.stage !== "paid" && j.stage !== "lost");
-  const paidMTD = allJobs
+  const activeJobs = d.jobs.filter((j) => j.stage !== "paid" && j.stage !== "lost");
+  const paidMTD = d.jobs
     .filter((j) => j.stage === "paid" && new Date(j.updatedAt) >= monthStart)
     .reduce((s, j) => s + computeTotals(j.lineItems).total, 0);
-  const today = appts
-    .filter((r) => sameDay(new Date(r.a.startsAt), now) && r.a.status !== "cancelled")
-    .sort((a, b) => +new Date(a.a.startsAt) - +new Date(b.a.startsAt));
-  const pending = pendingForms.filter((r) => r.f.status !== "signed");
-  const recentActs = acts
-    .sort((a, b) => +new Date(b.act.createdAt) - +new Date(a.act.createdAt))
-    .slice(0, 10);
+
+  const today = d.appointments
+    .filter((a) => sameDay(new Date(a.startsAt), now) && a.status !== "cancelled")
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .map((a) => ({
+      ...a,
+      clientName: d.clients.find((c) => c.id === a.clientId)?.name ?? "—",
+      user: d.users.find((u) => u.id === a.assigneeId) ?? null,
+    }));
+
+  const pending = d.forms
+    .filter((f) => f.status !== "signed")
+    .map((f) => ({ ...f, clientName: d.clients.find((c) => c.id === f.clientId)?.name ?? "—" }));
+
+  const recentActs = [...d.activities]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 10)
+    .map((a) => ({ ...a, user: d.users.find((u) => u.id === a.userId) ?? null }));
 
   const stageValues = STAGES.filter((s) => s.key !== "lost").map((s) => ({
     ...s,
-    count: allJobs.filter((j) => j.stage === s.key).length,
-    value: allJobs
-      .filter((j) => j.stage === s.key)
-      .reduce((sum, j) => sum + computeTotals(j.lineItems).subtotal, 0),
+    count: d.jobs.filter((j) => j.stage === s.key).length,
+    value: d.jobs.filter((j) => j.stage === s.key).reduce((sum, j) => sum + computeTotals(j.lineItems).subtotal, 0),
   }));
   const maxStage = Math.max(...stageValues.map((s) => s.value), 1);
 
@@ -81,7 +57,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Greeting */}
       <div className="animate-rise">
         <p className="text-[13px] font-medium text-ink-soft">
           {now.toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric" })}
@@ -91,7 +66,6 @@ export default async function DashboardPage() {
         </h2>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 animate-rise [animation-delay:60ms] lg:grid-cols-4 lg:gap-4">
         {[
           { icon: Briefcase, label: "Active jobs", value: String(activeJobs.length), sub: `${new Set(activeJobs.map((j) => j.clientId)).size} clients on the books`, tone: "text-blue-600 bg-blue-50" },
@@ -111,7 +85,6 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-5">
-        {/* Today's schedule */}
         <div className="card animate-rise [animation-delay:120ms] xl:col-span-3">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h3 className="font-display text-[15px] font-bold">Today&rsquo;s schedule</h3>
@@ -127,26 +100,26 @@ export default async function DashboardPage() {
                 <p className="max-w-56 text-xs text-ink-soft">Enjoy the quiet — or book an estimate visit while the phone&rsquo;s slow.</p>
               </div>
             )}
-            {today.map((r) => {
-              const Icon = TYPE_ICON[r.a.type] ?? Wrench;
+            {today.map((a) => {
+              const Icon = TYPE_ICON[a.type] ?? Wrench;
               return (
-                <div key={r.a.id} className="flex items-center gap-3.5 px-3 py-3.5">
+                <div key={a.id} className="flex items-center gap-3.5 px-3 py-3.5">
                   <div className="w-[76px] shrink-0 text-right">
-                    <p className="text-[13px] font-bold tnum">{fmtTime(r.a.startsAt)}</p>
-                    <p className="text-[11px] text-ink-soft tnum">{fmtTime(r.a.endsAt)}</p>
+                    <p className="text-[13px] font-bold tnum">{fmtTime(a.startsAt)}</p>
+                    <p className="text-[11px] text-ink-soft tnum">{fmtTime(a.endsAt)}</p>
                   </div>
-                  <span className="h-9 w-1 rounded-full" style={{ background: r.assigneeColor ?? "#cbd5e1" }} />
+                  <span className="h-9 w-1 rounded-full" style={{ background: a.user?.color ?? "#cbd5e1" }} />
                   <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-canvas text-ink-soft">
                     <Icon className="size-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{r.a.title}</p>
+                    <p className="truncate text-sm font-semibold">{a.title}</p>
                     <p className="truncate text-xs text-ink-soft">
-                      {r.clientName} {r.assigneeName ? `· ${r.assigneeName}` : ""}
+                      {a.clientName} {a.user ? `· ${a.user.name}` : ""}
                     </p>
                   </div>
-                  {r.a.jobId && (
-                    <Link href={`/jobs/${r.a.jobId}`} className="rounded-full border border-line px-2.5 py-1 text-[11px] font-bold text-ink-soft transition hover:border-ink hover:text-ink">
+                  {a.jobId && (
+                    <Link href={`/jobs/${a.jobId}`} className="rounded-full border border-line px-2.5 py-1 text-[11px] font-bold text-ink-soft transition hover:border-ink hover:text-ink">
                       Job card
                     </Link>
                   )}
@@ -156,7 +129,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Pipeline value */}
         <div className="card animate-rise p-5 [animation-delay:180ms] xl:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-[15px] font-bold">Pipeline value</h3>
@@ -184,7 +156,6 @@ export default async function DashboardPage() {
             ))}
           </div>
 
-          {/* Awaiting signature */}
           <div className="mt-5 border-t border-line pt-4">
             <div className="flex items-center justify-between">
               <h4 className="text-[13px] font-bold">Out for signature</h4>
@@ -192,15 +163,15 @@ export default async function DashboardPage() {
             </div>
             <div className="mt-2.5 space-y-2">
               {pending.length === 0 && <p className="text-xs text-ink-soft">Nothing waiting on a client right now.</p>}
-              {pending.map((r) => (
-                <Link key={r.f.id} href="/forms" className="flex items-center gap-3 rounded-xl border border-line bg-canvas px-3 py-2.5 transition hover:border-ink/25 hover:bg-white">
+              {pending.map((f) => (
+                <Link key={f.id} href="/forms" className="flex items-center gap-3 rounded-xl border border-line bg-canvas px-3 py-2.5 transition hover:border-ink/25 hover:bg-white">
                   <FileSignature className="size-4 shrink-0 text-ink-soft" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold">{FORM_PHASES[r.f.templateKey]?.label ?? r.f.templateKey}</p>
-                    <p className="truncate text-[11px] text-ink-soft">{r.clientName} · sent {timeAgo(r.f.sentAt)}</p>
+                    <p className="truncate text-[13px] font-semibold">{FORM_PHASES[f.templateKey]?.label ?? f.templateKey}</p>
+                    <p className="truncate text-[11px] text-ink-soft">{f.clientName} · sent {timeAgo(f.sentAt)}</p>
                   </div>
-                  <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", r.f.status === "viewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>
-                    {r.f.status}
+                  <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", f.status === "viewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>
+                    {f.status}
                   </span>
                 </Link>
               ))}
@@ -209,24 +180,23 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Activity */}
       <div className="card animate-rise [animation-delay:240ms]">
         <h3 className="border-b border-line px-5 py-4 font-display text-[15px] font-bold">Recent activity</h3>
         <ul className="grid gap-x-8 px-5 py-3 md:grid-cols-2">
-          {recentActs.map((r) => (
-            <li key={r.act.id} className="flex items-start gap-3 border-b border-line/60 py-3 last:border-0 md:[&:nth-last-child(2)]:border-0">
+          {recentActs.map((a) => (
+            <li key={a.id} className="flex items-start gap-3 border-b border-line/60 py-3 last:border-0 md:[&:nth-last-child(2)]:border-0">
               <span
                 className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
-                style={{ background: r.userColor ?? "#94a3b8" }}
+                style={{ background: a.user?.color ?? "#94a3b8" }}
               >
-                {r.userName ? r.userName.split(" ").map((p) => p[0]).slice(0, 2).join("") : "CL"}
+                {a.user ? a.user.name.split(" ").map((p) => p[0]).slice(0, 2).join("") : "CL"}
               </span>
               <div className="min-w-0">
                 <p className="text-[13px] leading-snug">
-                  <span className="font-semibold">{r.userName ?? "Client"}</span>{" "}
-                  <span className="text-ink-soft">{r.act.message.replace(/^\S+ added a note$/, "added a note")}</span>
+                  <span className="font-semibold">{a.user?.name ?? "Client"}</span>{" "}
+                  <span className="text-ink-soft">{a.message.replace(/^\S+ added a note$/, "added a note")}</span>
                 </p>
-                <p className="mt-0.5 text-[11px] text-ink-soft/80">{timeAgo(r.act.createdAt)}</p>
+                <p className="mt-0.5 text-[11px] text-ink-soft/80">{timeAgo(a.createdAt)}</p>
               </div>
             </li>
           ))}

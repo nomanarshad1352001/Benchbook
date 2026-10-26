@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { GripVertical, Loader2, MapPin, Plus, Search, X } from "lucide-react";
 import { SERVICE_TYPES, STAGES } from "@/lib/constants";
-import type { LineItem } from "@/db/schema";
+import type { LineItem } from "@/lib/model";
 import LineItemsEditor from "@/components/line-items-editor";
 import { cn, daysInStage, moneyCompact } from "@/lib/utils";
 import { money } from "@/lib/utils";

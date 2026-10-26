@@ -1,42 +1,33 @@
-import { redirect } from "next/navigation";
-import { db } from "@/db";
-import { apiKeys, users, webhookDeliveries, webhookEndpoints } from "@/db/schema";
-import { getSessionUser } from "@/lib/auth";
+"use client";
+
 import SettingsView from "@/components/settings-view";
+import { auth, useData, useReady } from "@/lib/store";
+import { BootScreen } from "@/app/(app)/layout";
 
-export const dynamic = "force-dynamic";
+export default function SettingsPage() {
+  const ready = useReady();
+  const d = useData();
+  if (!ready) return <BootScreen />;
 
-export default async function SettingsPage() {
-  const me = await getSessionUser();
-  if (!me || (me.role !== "admin" && me.role !== "office")) redirect("/dashboard");
-
-  const [team, keys, hooks, deliveries] = await Promise.all([
-    db.select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: users.role, color: users.color, avatarUrl: users.avatarUrl, createdAt: users.createdAt }).from(users),
-    db.select().from(apiKeys),
-    db.select().from(webhookEndpoints),
-    db.select().from(webhookDeliveries),
-  ]);
-
-  const hookMap = new Map(hooks.map((h) => [h.id, h.url]));
+  const me = d.users.find((u) => u.id === auth.uid) ?? d.users[0];
+  const hookMap = new Map(d.webhooks.map((h) => [h.id, h.url]));
 
   return (
     <SettingsView
-      me={me}
-      team={team.map((t) => ({ ...t, createdAt: t.createdAt.toISOString() }))}
-      apiKeys={keys.map((k) => ({
-        id: k.id, name: k.name, prefix: k.prefix, createdAt: k.createdAt.toISOString(),
-        lastUsedAt: k.lastUsedAt?.toISOString() ?? null, revoked: !!k.revokedAt,
+      me={{ id: me.id, name: me.name, email: me.email, role: me.role, color: me.color, avatarUrl: me.avatarUrl }}
+      team={d.users.map((u) => ({
+        id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role,
+        color: u.color, avatarUrl: u.avatarUrl, createdAt: "2024-01-15T10:00:00.000Z",
       }))}
-      webhooks={hooks.map((h) => ({
-        id: h.id, url: h.url, events: h.events, active: h.active, createdAt: h.createdAt.toISOString(),
+      apiKeys={d.apiKeys.map((k) => ({
+        id: k.id, name: k.name, prefix: k.prefix, createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt, revoked: k.revoked,
       }))}
-      deliveries={deliveries
-        .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+      webhooks={d.webhooks.map((h) => ({ id: h.id, url: h.url, events: h.events, active: h.active, createdAt: h.createdAt }))}
+      deliveries={[...d.deliveries]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 12)
-        .map((d) => ({
-          id: d.id, event: d.event, status: d.status, responseCode: d.responseCode,
-          at: d.createdAt.toISOString(), url: hookMap.get(d.endpointId) ?? "—",
-        }))}
+        .map((dl) => ({ id: dl.id, event: dl.event, status: dl.status, responseCode: dl.responseCode, at: dl.createdAt, url: hookMap.get(dl.endpointId) ?? "—" }))}
     />
   );
 }

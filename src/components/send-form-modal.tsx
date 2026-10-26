@@ -69,7 +69,9 @@ export default function SendFormModal({
     }
   }
 
-  const link = sent ? `${typeof window !== "undefined" ? window.location.origin : ""}/sign/${sent.token}` : "";
+  const link = sent
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}${(sent as { link?: string }).link ?? `/sign/${sent.token}`}`
+    : "";
 
   const field = "w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm transition focus:border-ink";
 

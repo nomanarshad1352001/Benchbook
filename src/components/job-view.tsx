@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { APPOINTMENT_TYPES, FORM_PHASES, STAGES, STAGE_MAP, type StageKey } from "@/lib/constants";
-import type { AuditEvent, LineItem } from "@/db/schema";
+import type { AuditEvent, LineItem } from "@/lib/model";
 import LineItemsEditor from "@/components/line-items-editor";
 import SendFormModal from "@/components/send-form-modal";
 import { cn, fmtDate, fmtDateTime, fmtTime, money, timeAgo } from "@/lib/utils";

@@ -1,76 +1,104 @@
-import { headers } from "next/headers";
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useParams } from "next/navigation";
 import { Wrench } from "lucide-react";
-import { db } from "@/db";
-import { clients, forms, formTemplates, jobs } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { resolveTemplate } from "@/lib/ops";
-import { COMPANY } from "@/lib/constants";
-import type { Address } from "@/db/schema";
-import { formatAddress } from "@/lib/utils";
 import SignView from "@/components/sign-view";
+import { COMPANY } from "@/lib/constants";
+import { formatAddress, primaryAddress, resolveTemplate } from "@/lib/model";
+import { ops, useData, useReady } from "@/lib/store";
 
-export const dynamic = "force-dynamic";
+export default function SignPage() {
+  const ready = useReady();
+  const d = useData();
+  const params = useParams<{ token: string }>();
+  const token = params.token;
+  const marked = useRef(false);
 
-export default async function SignPage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  const [form] = await db.select().from(forms).where(eq(forms.token, token));
+  const form = ready ? d.forms.find((f) => f.token === token) : undefined;
 
-  if (!form) {
+  useEffect(() => {
+    if (ready && form && form.status === "sent" && !marked.current) {
+      marked.current = true;
+      ops.markFormViewed(token);
+    }
+  }, [ready, form, token]);
+
+  if (!ready) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-canvas p-6">
-        <div className="card max-w-sm p-8 text-center">
-          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-ink text-accent">
-            <Wrench className="size-5" />
-          </span>
-          <h1 className="mt-4 font-display text-lg font-bold">Link not found</h1>
-          <p className="mt-1 text-sm text-ink-soft">
-            This signing link is invalid or has expired. Ask {COMPANY.name} to send a fresh one — {COMPANY.phone}.
-          </p>
-        </div>
+      <main className="grid min-h-dvh place-items-center bg-canvas">
+        <span className="grid size-14 animate-pulse place-items-center rounded-3xl bg-ink text-accent">
+          <Wrench className="size-6" />
+        </span>
       </main>
     );
   }
 
-  const [client] = await db.select().from(clients).where(eq(clients.id, form.clientId));
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, form.jobId));
-  const [template] = await db.select().from(formTemplates).where(eq(formTemplates.key, form.templateKey));
+  /* 1) form exists in this browser's workspace */
+  if (form) {
+    const client = d.clients.find((c) => c.id === form.clientId);
+    const job = d.jobs.find((j) => j.id === form.jobId);
+    const template = d.templates.find((t) => t.key === form.templateKey);
+    const content = client && job && template
+      ? resolveTemplate(template.body, {
+          client,
+          clientAddress: client.addresses.length ? formatAddress(primaryAddress(client)!) : "",
+          job,
+        })
+      : form.content;
 
-  /* mark viewed exactly once (first open) */
-  if (form.status === "sent") {
-    const h = await headers();
-    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-    await db
-      .update(forms)
-      .set({
-        status: "viewed",
-        events: [
-          ...form.events,
-          { at: new Date().toISOString(), event: "viewed", ip, meta: "Signing page opened" },
-        ],
-      })
-      .where(eq(forms.id, form.id));
+    return (
+      <SignView
+        token={token}
+        formId={form.id}
+        docName={template?.name ?? "Document"}
+        content={content}
+        status={form.status === "sent" ? "viewed" : form.status}
+        clientName={client?.name ?? ""}
+        clientEmail={client?.email ?? ""}
+        jobTitle={job?.title ?? ""}
+        signed={{
+          signerName: form.signerName,
+          signedAt: form.signedAt,
+          signerIp: form.signerIp,
+          signatureUrl: form.signatureUrl,
+        }}
+      />
+    );
   }
 
-  const primary: Address | undefined = client?.addresses.find((a) => a.primary) ?? client?.addresses[0];
-  const content = client && job && template
-    ? resolveTemplate(template.body, { client, clientAddress: primary ? formatAddress(primary) : "", job })
-    : form.content;
+  /* 2) shared link opened on a device without this workspace — decode the embedded document */
+  const dParam = new URLSearchParams(window.location.search).get("d");
+  if (dParam) {
+    try {
+      const doc = JSON.parse(decodeURIComponent(dParam)) as { n: string; b: string; cn: string; e: string; j: string };
+      return (
+        <SignView
+          token={token}
+          docName={doc.n}
+          content={doc.b}
+          status="viewed"
+          clientName={doc.cn}
+          clientEmail={doc.e}
+          jobTitle={doc.j}
+          ephemeral
+          signed={{ signerName: null, signedAt: null, signerIp: null, signatureUrl: null }}
+        />
+      );
+    } catch { /* fall through to invalid */ }
+  }
 
   return (
-    <SignView
-      token={token}
-      docName={template?.name ?? "Document"}
-      content={content}
-      status={form.status === "sent" ? "viewed" : form.status}
-      clientName={client?.name ?? ""}
-      clientEmail={client?.email ?? ""}
-      jobTitle={job?.title ?? ""}
-      signed={{
-        signerName: form.signerName,
-        signedAt: form.signedAt?.toISOString() ?? null,
-        signerIp: form.signerIp,
-        signatureUrl: form.signatureUrl,
-      }}
-    />
+    <main className="grid min-h-dvh place-items-center bg-canvas p-6">
+      <div className="card max-w-sm p-8 text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-ink text-accent">
+          <Wrench className="size-5" />
+        </span>
+        <h1 className="mt-4 font-display text-lg font-bold">Link not found</h1>
+        <p className="mt-1 text-sm text-ink-soft">
+          This signing link is invalid or has expired. Ask {COMPANY.name} to send a fresh one — {COMPANY.phone}.
+        </p>
+      </div>
+    </main>
   );
 }

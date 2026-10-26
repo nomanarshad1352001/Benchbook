@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
   Copy,
+  FileDown,
   Loader2,
   Mail,
   MapPin,
@@ -90,12 +91,21 @@ export default function ClientsView({
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-xl bg-ink px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-black"
-        >
-          <UserPlus className="size-4" /> New client
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={async () => (await import("@/lib/store")).downloadClientsCsv()}
+            className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2.5 text-[13px] font-semibold transition hover:border-ink/40"
+            title="Download all clients as CSV (same format as import)"
+          >
+            <FileDown className="size-4" /> Export
+          </button>
+          <button
+            onClick={() => setShowNew(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-ink px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-black"
+          >
+            <UserPlus className="size-4" /> New client
+          </button>
+        </div>
       </div>
 
       <p className="text-xs font-medium text-ink-soft">

@@ -1,21 +1,25 @@
-import { redirect } from "next/navigation";
-import { Wrench, ShieldCheck, CalendarDays, FileSignature } from "lucide-react";
-import { getSessionUser } from "@/lib/auth";
-import { ensureSeeded } from "@/db/seed";
-import { LOGIN_HERO, COMPANY, AVATARS } from "@/lib/constants";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Wrench, ShieldCheck, CalendarDays, FileSignature, Database } from "lucide-react";
+import { auth, useData, useReady } from "@/lib/store";
+import { LoginHeroAssets } from "@/lib/login-assets";
 import LoginForm from "@/components/login-form";
+import { COMPANY } from "@/lib/constants";
 
-export const dynamic = "force-dynamic";
+export default function LoginPage() {
+  const ready = useReady();
+  const d = useData();
+  const router = useRouter();
 
-export default async function LoginPage() {
-  await ensureSeeded();
-  const user = await getSessionUser();
-  if (user) redirect("/dashboard");
+  useEffect(() => {
+    if (ready && d.users.some((u) => u.id === auth.uid)) router.replace("/dashboard");
+  }, [ready, d, router]);
 
   return (
     <main className="min-h-dvh lg:grid lg:grid-cols-[46%_54%]">
-      {/* ------- Form side ------- */}
-      <section className="flex min-h-dvh flex-col justify-center px-5 py-10 sm:px-12 lg:px-16 bg-paper">
+      <section className="flex min-h-dvh flex-col justify-center bg-paper px-5 py-10 sm:px-12 lg:px-16">
         <div className="mx-auto w-full max-w-md animate-rise">
           <div className="flex items-center gap-3">
             <span className="grid size-11 place-items-center rounded-2xl bg-ink text-accent">
@@ -37,16 +41,15 @@ export default async function LoginPage() {
           <LoginForm />
         </div>
 
-        <p className="mx-auto mt-10 w-full max-w-md text-center text-[11px] text-ink-soft/70">
-          Demo environment with seeded data · fixeswell board resets nightly
+        <p className="mx-auto mt-10 flex w-full max-w-md items-center justify-center gap-1.5 text-center text-[11px] text-ink-soft/70">
+          <Database className="size-3" /> Zero-database demo — data persists in this browser · deploys to Vercel as-is
         </p>
       </section>
 
-      {/* ------- Hero side ------- */}
       <section className="relative hidden overflow-hidden lg:block">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={LOGIN_HERO}
+          src={LoginHeroAssets.hero}
           alt="Fixwell crew member on site"
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -69,7 +72,7 @@ export default async function LoginPage() {
             </div>
             <div className="flex items-center gap-3 border-t border-white/15 pt-5">
               <div className="flex -space-x-2.5">
-                {[AVATARS.dan, AVATARS.priya, AVATARS.marcus, AVATARS.tanya, AVATARS.jim].map((a) => (
+                {LoginHeroAssets.avatars.map((a) => (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img key={a} src={a} alt="" className="size-8 rounded-full border-2 border-ink object-cover" />
                 ))}

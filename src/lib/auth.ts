@@ -1,3 +1,10 @@
+/* =========================================================================
+   legacy compatibility helpers — the active app authenticates client-side
+   via src/lib/store.ts. These remain so older repo checkouts that still
+   contain DB-era routes (api/auth, api/keys, api/webhooks …) compile and
+   build successfully. If DATABASE_URL is configured they work as before.
+   ========================================================================= */
+
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";

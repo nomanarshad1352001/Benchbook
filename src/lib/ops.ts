@@ -1,3 +1,10 @@
+/* =========================================================================
+   legacy compatibility ops — the active app performs these operations
+   synchronously in src/lib/store.ts (localStorage). These remain so stale
+   DB-era route files in out-of-sync checkouts keep compiling. If
+   DATABASE_URL is configured they function exactly as before.
+   ========================================================================= */
+
 import { db } from "@/db";
 import {
   activities,

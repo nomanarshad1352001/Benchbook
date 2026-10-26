@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import type { LineItem } from "@/db/schema";
+import type { LineItem } from "@/lib/model";
 import { TAX_RATE } from "@/lib/constants";
 import { cn, money } from "@/lib/utils";
 

@@ -8,6 +8,7 @@ import {
   Check,
   CloudUpload,
   Copy,
+  FileDown,
   FileSpreadsheet,
   Globe,
   HardDriveDownload,
@@ -35,7 +36,7 @@ const TABS = [
   { key: "team", label: "Team & roles", icon: Users },
   { key: "keys", label: "API keys", icon: KeyRound },
   { key: "webhooks", label: "Webhooks", icon: Webhook },
-  { key: "import", label: "Import", icon: FileSpreadsheet },
+  { key: "import", label: "Import & export", icon: FileSpreadsheet },
   { key: "hosting", label: "Hosting & backups", icon: Globe },
 ] as const;
 
@@ -429,6 +430,20 @@ function ImportTab() {
           <button onClick={run} disabled={busy || rowCount === 0} className="flex items-center gap-2 rounded-xl bg-ink px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-50">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
             Import {rowCount} clients
+          </button>
+        </div>
+
+        <div className="mt-5 border-t border-line pt-5">
+          <h3 className="text-[13px] font-bold">Export your client list</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+            Downloads every client — contacts, lead source, tags and service addresses — in the exact
+            spreadsheet format above, so it re-imports cleanly (here, Excel, Numbers or Google Sheets).
+          </p>
+          <button
+            onClick={async () => (await import("@/lib/store")).downloadClientsCsv()}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-white py-2.5 text-[13px] font-semibold transition hover:border-ink/40"
+          >
+            <FileDown className="size-4" /> Download clients.csv
           </button>
         </div>
       </div>

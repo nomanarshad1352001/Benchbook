@@ -8,7 +8,17 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 
-/* ---------- Types ---------- */
+/* =========================================================================
+   Benchbook is zero-database at runtime: the interface persists in
+   localStorage (src/lib/store.ts) and the public REST API uses the
+   serverless sandbox (src/app/api/v1/[...v1path]/route.ts).
+
+   This file intentionally keeps the FULL table definitions so that (a) any
+   older checkout of the repo that still references these tables compiles
+   cleanly, and (b) it doubles as the canonical relational data model if you
+   later point the app at a real Postgres. Nothing in the active UI imports
+   from here.
+   ========================================================================= */
 
 export type Address = {
   label: string;
@@ -35,8 +45,6 @@ export type AuditEvent = {
   meta?: string | null;
 };
 
-/* ---------- Tables ---------- */
-
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -46,19 +54,13 @@ export const users = pgTable("users", {
   phone: text("phone"),
   color: text("color").notNull().default("#f59e0b"),
   avatarUrl: text("avatar_url"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const sessions = pgTable("sessions", {
   token: text("token").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
@@ -71,19 +73,13 @@ export const clients = pgTable("clients", {
   tags: jsonb("tags").$type<string[]>().notNull(),
   addresses: jsonb("addresses").$type<Address[]>().notNull(),
   notes: text("notes"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const jobs = pgTable("jobs", {
   id: serial("id").primaryKey(),
-  clientId: integer("client_id")
-    .notNull()
-    .references(() => clients.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
   title: text("title").notNull(),
   serviceType: text("service_type").notNull().default("General Repairs"),
   stage: text("stage").notNull().default("lead"),
@@ -95,20 +91,14 @@ export const jobs = pgTable("jobs", {
   lostReason: text("lost_reason"),
   assigneeId: integer("assignee_id").references(() => users.id),
   createdById: integer("created_by_id").references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   jobId: integer("job_id").references(() => jobs.id),
-  clientId: integer("client_id")
-    .notNull()
-    .references(() => clients.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
   title: text("title").notNull(),
   type: text("type").notNull().default("job"), // estimate | job | callback
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
@@ -116,9 +106,7 @@ export const appointments = pgTable("appointments", {
   assigneeId: integer("assignee_id").references(() => users.id),
   notes: text("notes"),
   status: text("status").notNull().default("scheduled"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const formTemplates = pgTable("form_templates", {
@@ -126,24 +114,18 @@ export const formTemplates = pgTable("form_templates", {
   name: text("name").notNull(),
   description: text("description"),
   body: text("body").notNull(),
-  nextStage: text("next_stage"), // stage the job advances to on signature
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  nextStage: text("next_stage"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const forms = pgTable("forms", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   templateKey: text("template_key").notNull(),
-  jobId: integer("job_id")
-    .notNull()
-    .references(() => jobs.id),
-  clientId: integer("client_id")
-    .notNull()
-    .references(() => clients.id),
-  status: text("status").notNull().default("sent"), // sent | viewed | signed
-  channel: text("channel").notNull().default("email"), // email | sms
+  jobId: integer("job_id").notNull().references(() => jobs.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
+  status: text("status").notNull().default("sent"),
+  channel: text("channel").notNull().default("email"),
   recipient: text("recipient"),
   content: text("content").notNull(),
   clientNote: text("client_note"),
@@ -155,35 +137,25 @@ export const forms = pgTable("forms", {
   events: jsonb("events").$type<AuditEvent[]>().notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   signedAt: timestamp("signed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const notes = pgTable("notes", {
   id: serial("id").primaryKey(),
-  clientId: integer("client_id")
-    .notNull()
-    .references(() => clients.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
   jobId: integer("job_id").references(() => jobs.id),
   userId: integer("user_id").references(() => users.id),
   body: text("body").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const photos = pgTable("photos", {
   id: serial("id").primaryKey(),
-  clientId: integer("client_id")
-    .notNull()
-    .references(() => clients.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
   jobId: integer("job_id").references(() => jobs.id),
   url: text("url").notNull(),
   caption: text("caption"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const activities = pgTable("activities", {
@@ -193,9 +165,7 @@ export const activities = pgTable("activities", {
   userId: integer("user_id").references(() => users.id),
   kind: text("kind").notNull().default("event"),
   message: text("message").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const apiKeys = pgTable("api_keys", {
@@ -204,9 +174,7 @@ export const apiKeys = pgTable("api_keys", {
   prefix: text("prefix").notNull(),
   keyHash: text("key_hash").notNull(),
   createdById: integer("created_by_id").references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
@@ -217,21 +185,15 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
   events: jsonb("events").$type<string[]>().notNull(),
   secret: text("secret").notNull(),
   active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const webhookDeliveries = pgTable("webhook_deliveries", {
   id: serial("id").primaryKey(),
-  endpointId: integer("endpoint_id")
-    .notNull()
-    .references(() => webhookEndpoints.id),
+  endpointId: integer("endpoint_id").notNull().references(() => webhookEndpoints.id),
   event: text("event").notNull(),
   payload: jsonb("payload").notNull(),
   status: text("status").notNull().default("pending"),
   responseCode: integer("response_code"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -1,58 +1,37 @@
-import { db } from "@/db";
-import { clients, jobs, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+"use client";
+
 import PipelineBoard from "@/components/pipeline-board";
-import { computeTotals } from "@/lib/ops";
+import { computeTotals, primaryAddress } from "@/lib/model";
+import { useData, useReady } from "@/lib/store";
+import { BootScreen } from "@/app/(app)/layout";
 
-export const dynamic = "force-dynamic";
+export default function PipelinePage() {
+  const ready = useReady();
+  const d = useData();
+  if (!ready) return <BootScreen />;
 
-export default async function PipelinePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
-  const sp = await searchParams;
-  const rows = await db
-    .select({
-      j: jobs,
-      clientName: clients.name,
-      assigneeName: users.name,
-      assigneeColor: users.color,
-      assigneeAvatar: users.avatarUrl,
-    })
-    .from(jobs)
-    .innerJoin(clients, eq(jobs.clientId, clients.id))
-    .leftJoin(users, eq(jobs.assigneeId, users.id));
+  const sp = Object.fromEntries(new URLSearchParams(window.location.search));
 
-  const boardJobs = rows.map((r) => ({
-    id: r.j.id,
-    title: r.j.title,
-    serviceType: r.j.serviceType,
-    stage: r.j.stage,
-    total: computeTotals(r.j.lineItems).total,
-    client: { id: r.j.clientId, name: r.clientName },
-    assignee: r.assigneeName
-      ? { name: r.assigneeName, color: r.assigneeColor ?? "#94a3b8", avatar: r.assigneeAvatar }
-      : null,
-    updatedAt: r.j.updatedAt.toISOString(),
-  }));
-
-  const clientOpts = await db
-    .select({ id: clients.id, name: clients.name, addresses: clients.addresses })
-    .from(clients);
-  const team = await db
-    .select({ id: users.id, name: users.name, color: users.color })
-    .from(users);
+  const boardJobs = d.jobs.map((j) => {
+    const client = d.clients.find((c) => c.id === j.clientId);
+    const assignee = d.users.find((u) => u.id === j.assigneeId);
+    return {
+      id: j.id, title: j.title, serviceType: j.serviceType, stage: j.stage,
+      total: computeTotals(j.lineItems).total,
+      client: { id: j.clientId, name: client?.name ?? "—" },
+      assignee: assignee ? { name: assignee.name, color: assignee.color, avatar: assignee.avatarUrl } : null,
+      updatedAt: j.updatedAt,
+    };
+  });
 
   return (
     <PipelineBoard
       jobs={boardJobs}
-      clients={clientOpts.map((c) => ({
-        id: c.id,
-        name: c.name,
-        address: `${(c.addresses.find((a) => a.primary) ?? c.addresses[0])?.line1 ?? ""}, ${(c.addresses.find((a) => a.primary) ?? c.addresses[0])?.city ?? ""}`,
-      }))}
-      team={team}
+      clients={d.clients.map((c) => {
+        const a = primaryAddress(c);
+        return { id: c.id, name: c.name, address: a ? `${a.line1}, ${a.city}` : "" };
+      })}
+      team={d.users.map((u) => ({ id: u.id, name: u.name, color: u.color }))}
       openNew={sp.new === "1"}
       presetClientId={sp.client ? Number(sp.client) : null}
     />

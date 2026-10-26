@@ -19,8 +19,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SessionUser } from "@/lib/auth";
+import { ops } from "@/lib/store";
 
+export type ShellUser = {
+  id: number; name: string; email: string; role: "admin" | "office" | "field";
+  color: string; avatarUrl: string | null; phone: string | null;
+};
 type TeamMember = { id: number; name: string; role: string; color: string; avatarUrl: string | null };
 
 const NAV: { href: string; label: string; icon: LucideIcon; roles: string[] }[] = [
@@ -56,7 +60,7 @@ export default function Shell({
   team,
   children,
 }: {
-  user: SessionUser;
+  user: ShellUser;
   team: TeamMember[];
   children: React.ReactNode;
 }) {
@@ -77,17 +81,15 @@ export default function Shell({
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
+  function signOut() {
+    ops.logout();
     router.push("/login");
-    router.refresh();
   }
 
   const items = NAV.filter((n) => n.roles.includes(user.role));
 
   return (
     <div className="min-h-dvh">
-      {/* ---------- Sidebar (desktop) ---------- */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[228px] flex-col bg-ink text-white md:flex">
         <Link href="/dashboard" className="flex items-center gap-2.5 px-5 pb-6 pt-5">
           <span className="grid size-9 place-items-center rounded-xl bg-accent text-ink">
@@ -151,7 +153,6 @@ export default function Shell({
         </div>
       </aside>
 
-      {/* ---------- Top bar ---------- */}
       <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur-md md:pl-[228px]">
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
           <Link href="/dashboard" className="grid size-9 place-items-center rounded-xl bg-ink text-accent md:hidden">
@@ -236,12 +237,10 @@ export default function Shell({
         </div>
       </header>
 
-      {/* ---------- Content ---------- */}
-      <main className="mx-auto max-w-[1440px] px-4 pb-28 pt-6 sm:px-6 md:pb-12 md:pl-[252px] md:pr-6 md:pt-8 md:max-w-none">
+      <main className="mx-auto max-w-[1440px] px-4 pb-28 pt-6 sm:px-6 md:max-w-none md:pb-12 md:pl-[252px] md:pr-6 md:pt-8">
         {children}
       </main>
 
-      {/* ---------- Bottom nav (mobile) ---------- */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink md:hidden">
         <div className="grid grid-cols-5">
           {items.slice(0, 5).map((n) => {

@@ -1,124 +1,81 @@
-import { notFound } from "next/navigation";
-import { db } from "@/db";
-import { activities, appointments, clients, forms, jobs, notes, photos, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+"use client";
+
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import ClientView from "@/components/client-view";
-import { computeTotals } from "@/lib/ops";
 import { FORM_PHASES } from "@/lib/constants";
+import { computeTotals } from "@/lib/model";
+import { useData, useReady } from "@/lib/store";
+import { BootScreen } from "@/app/(app)/layout";
 
-export const dynamic = "force-dynamic";
+export default function ClientPage() {
+  const ready = useReady();
+  const d = useData();
+  const params = useParams<{ id: string }>();
+  const clientId = Number(params.id);
+  if (!ready) return <BootScreen />;
 
-export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const clientId = Number(id);
-  if (!Number.isFinite(clientId)) notFound();
+  const client = d.clients.find((c) => c.id === clientId);
+  if (!client) {
+    return (
+      <div className="card mx-auto mt-10 max-w-md p-10 text-center">
+        <p className="font-display text-lg font-bold">Client not found</p>
+        <p className="mt-1 text-sm text-ink-soft">This record may have been removed or the link is wrong.</p>
+        <Link href="/clients" className="mt-4 inline-block rounded-xl bg-ink px-4 py-2.5 text-[13px] font-semibold text-white">Back to clients</Link>
+      </div>
+    );
+  }
 
-  const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
-  if (!client) notFound();
-
-  const [jobRows, noteRows, actRows, photoRows, apptRows, formRows, team] = await Promise.all([
-    db.select().from(jobs).where(eq(jobs.clientId, clientId)),
-    db
-      .select({ n: notes, userName: users.name, userColor: users.color, jobTitle: jobs.title })
-      .from(notes)
-      .leftJoin(users, eq(notes.userId, users.id))
-      .leftJoin(jobs, eq(notes.jobId, jobs.id))
-      .where(eq(notes.clientId, clientId)),
-    db
-      .select({ a: activities, userName: users.name })
-      .from(activities)
-      .leftJoin(users, eq(activities.userId, users.id))
-      .where(eq(activities.clientId, clientId)),
-    db.select().from(photos).where(eq(photos.clientId, clientId)),
-    db
-      .select({ a: appointments, assigneeName: users.name, jobTitle: jobs.title })
-      .from(appointments)
-      .leftJoin(users, eq(appointments.assigneeId, users.id))
-      .leftJoin(jobs, eq(appointments.jobId, jobs.id))
-      .where(eq(appointments.clientId, clientId)),
-    db.select({ f: forms, jobTitle: jobs.title }).from(forms).innerJoin(jobs, eq(forms.jobId, jobs.id)).where(eq(forms.clientId, clientId)),
-    db.select({ id: users.id, name: users.name, color: users.color }).from(users),
-  ]);
-
+  const jobRows = d.jobs.filter((j) => j.clientId === client.id);
   const jobsList = jobRows
-    .map((j) => ({
-      id: j.id,
-      title: j.title,
-      serviceType: j.serviceType,
-      stage: j.stage,
-      total: computeTotals(j.lineItems).total,
-      updatedAt: j.updatedAt.toISOString(),
-    }))
-    .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+    .map((j) => ({ id: j.id, title: j.title, serviceType: j.serviceType, stage: j.stage, total: computeTotals(j.lineItems).total, updatedAt: j.updatedAt }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
+  const noteRows = d.notes
+    .filter((n) => n.clientId === client.id)
+    .map((n) => ({
+      id: n.id, body: n.body, at: n.createdAt,
+      userName: d.users.find((u) => u.id === n.userId)?.name ?? "Team",
+      userColor: d.users.find((u) => u.id === n.userId)?.color ?? "#94a3b8",
+      jobTitle: d.jobs.find((j) => j.id === n.jobId)?.title ?? null,
+    }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+
+  const actRows = d.activities
+    .filter((a) => a.clientId === client.id)
+    .map((a) => ({ kind: a.kind, text: a.message, at: a.createdAt, who: d.users.find((u) => u.id === a.userId)?.name ?? "System" }));
+
+  const formRows = d.forms.filter((f) => f.clientId === client.id);
   const timeline = [
-    ...actRows.map((r) => ({
-      kind: r.a.kind,
-      text: r.a.message,
-      at: r.a.createdAt.toISOString(),
-      who: r.userName ?? "System",
-    })),
-    ...noteRows.map((r) => ({
-      kind: "note",
-      text: r.n.body,
-      at: r.n.createdAt.toISOString(),
-      who: r.userName ?? "Team",
-    })),
-    ...formRows.flatMap((r) => {
-      const label = FORM_PHASES[r.f.templateKey]?.label ?? r.f.templateKey;
-      const items = [
-        { kind: "form", text: `${label} sent to ${r.f.recipient ?? "client"} (${r.f.channel.toUpperCase()})`, at: r.f.sentAt.toISOString(), who: "Office" },
-      ];
-      if (r.f.signedAt)
-        items.push({
-          kind: "form-signed",
-          text: `${label} signed by ${r.f.signerName ?? "client"} — job: ${r.jobTitle}`,
-          at: r.f.signedAt.toISOString(),
-          who: "Client",
-        });
+    ...actRows,
+    ...noteRows.map((n) => ({ kind: "note", text: n.body, at: n.at, who: n.userName })),
+    ...formRows.flatMap((f) => {
+      const label = FORM_PHASES[f.templateKey]?.label ?? f.templateKey;
+      const items = [{ kind: "form", text: `${label} sent to ${f.recipient ?? "client"} (${f.channel.toUpperCase()})`, at: f.sentAt, who: "Office" }];
+      if (f.signedAt)
+        items.push({ kind: "form-signed", text: `${label} signed by ${f.signerName ?? "client"} — job: ${d.jobs.find((j) => j.id === f.jobId)?.title ?? ""}`, at: f.signedAt, who: "Client" });
       return items;
     }),
-  ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+  ].sort((a, b) => b.at.localeCompare(a.at));
 
-  const upcoming = apptRows
-    .filter((r) => +new Date(r.a.startsAt) > Date.now() && r.a.status !== "cancelled")
-    .sort((a, b) => +new Date(a.a.startsAt) - +new Date(b.a.startsAt))[0];
+  const upcoming = d.appointments
+    .filter((a) => a.clientId === client.id && +new Date(a.startsAt) > Date.now() && a.status !== "cancelled")
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
 
   return (
     <ClientView
       client={{
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        phone: client.phone,
-        leadSource: client.leadSource,
-        tags: client.tags,
-        addresses: client.addresses,
-        notes: client.notes,
-        createdAt: client.createdAt.toISOString(),
+        id: client.id, name: client.name, email: client.email, phone: client.phone,
+        leadSource: client.leadSource, tags: client.tags, addresses: client.addresses,
+        notes: client.notes, createdAt: client.createdAt,
       }}
       jobs={jobsList}
       timeline={timeline}
-      notes={noteRows
-        .map((r) => ({
-          id: r.n.id,
-          body: r.n.body,
-          at: r.n.createdAt.toISOString(),
-          userName: r.userName ?? "Team",
-          userColor: r.userColor ?? "#94a3b8",
-          jobTitle: r.jobTitle,
-        }))
-        .sort((a, b) => +new Date(b.at) - +new Date(a.at))}
-      photos={photoRows.map((p) => ({ id: p.id, url: p.url, caption: p.caption }))}
+      notes={noteRows}
+      photos={d.photos.filter((p) => p.clientId === client.id).map((p) => ({ id: p.id, url: p.url, caption: p.caption }))}
       upcoming={
         upcoming
-          ? {
-              title: upcoming.a.title,
-              startsAt: upcoming.a.startsAt.toISOString(),
-              endsAt: upcoming.a.endsAt.toISOString(),
-              assigneeName: upcoming.assigneeName,
-              jobId: upcoming.a.jobId,
-            }
+          ? { title: upcoming.title, startsAt: upcoming.startsAt, endsAt: upcoming.endsAt, assigneeName: d.users.find((u) => u.id === upcoming.assigneeId)?.name ?? null, jobId: upcoming.jobId }
           : null
       }
       jobsForNotes={jobsList.map((j) => ({ id: j.id, title: j.title }))}

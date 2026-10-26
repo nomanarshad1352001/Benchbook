@@ -1,17 +1,51 @@
+"use client";
+
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Wrench } from "lucide-react";
 import Shell from "@/components/shell";
-import { requireUser } from "@/lib/auth";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { ensureSeeded } from "@/db/seed";
+import { auth, useData, useReady } from "@/lib/store";
 
-export const dynamic = "force-dynamic";
+export function BootScreen() {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-canvas">
+      <div className="flex flex-col items-center gap-4 animate-fade">
+        <span className="grid size-14 place-items-center rounded-3xl bg-ink text-accent shadow-lift">
+          <Wrench className="size-6 animate-pulse" strokeWidth={2.2} />
+        </span>
+        <p className="font-display text-sm font-bold text-ink-soft">Loading Benchbook…</p>
+      </div>
+    </div>
+  );
+}
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  await ensureSeeded();
-  const user = await requireUser();
-  const team = await db
-    .select({ id: users.id, name: users.name, role: users.role, color: users.color, avatarUrl: users.avatarUrl })
-    .from(users);
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const ready = useReady();
+  const d = useData();
+  const router = useRouter();
+  const pathname = usePathname();
+  const me = ready ? d.users.find((u) => u.id === auth.uid) ?? null : null;
 
-  return <Shell user={user} team={team}>{children}</Shell>;
+  useEffect(() => {
+    if (ready && !me) router.replace("/login");
+    if (
+      ready &&
+      me &&
+      me.role === "field" &&
+      (pathname.startsWith("/settings") || pathname.startsWith("/docs"))
+    ) {
+      router.replace("/dashboard");
+    }
+  }, [ready, me, pathname, router]);
+
+  if (!ready || !me) return <BootScreen />;
+
+  return (
+    <Shell
+      user={{ id: me.id, name: me.name, email: me.email, role: me.role, color: me.color, avatarUrl: me.avatarUrl, phone: me.phone }}
+      team={d.users.map((u) => ({ id: u.id, name: u.name, role: u.role, color: u.color, avatarUrl: u.avatarUrl }))}
+    >
+      {children}
+    </Shell>
+  );
 }

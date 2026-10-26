@@ -1,40 +1,28 @@
-import { db } from "@/db";
-import { clients, jobs } from "@/db/schema";
+"use client";
+
 import ClientsView from "@/components/clients-view";
-import { computeTotals } from "@/lib/ops";
+import { computeTotals, primaryAddress } from "@/lib/model";
+import { useData, useReady } from "@/lib/store";
+import { BootScreen } from "@/app/(app)/layout";
 
-export const dynamic = "force-dynamic";
+export default function ClientsPage() {
+  const ready = useReady();
+  const d = useData();
+  if (!ready) return <BootScreen />;
 
-export default async function ClientsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
-  const sp = await searchParams;
-  const [allClients, allJobs] = await Promise.all([
-    db.select().from(clients),
-    db.select().from(jobs),
-  ]);
+  const sp = Object.fromEntries(new URLSearchParams(window.location.search));
 
-  const rows = allClients
+  const rows = [...d.clients]
     .map((c) => {
-      const cj = allJobs.filter((j) => j.clientId === c.id);
+      const cj = d.jobs.filter((j) => j.clientId === c.id);
       const active = cj.filter((j) => j.stage !== "paid" && j.stage !== "lost");
-      const billed = cj
-        .filter((j) => j.stage === "paid")
-        .reduce((s, j) => s + computeTotals(j.lineItems).total, 0);
+      const billed = cj.filter((j) => j.stage === "paid").reduce((s, j) => s + computeTotals(j.lineItems).total, 0);
       return {
-        id: c.id,
-        name: c.name,
-        email: c.email,
-        phone: c.phone,
-        leadSource: c.leadSource,
-        tags: c.tags,
-        address: c.addresses.find((a) => a.primary) ?? c.addresses[0] ?? null,
+        id: c.id, name: c.name, email: c.email, phone: c.phone, leadSource: c.leadSource,
+        tags: c.tags, address: primaryAddress(c) ?? null,
         activeCount: active.length,
         stageDots: active.slice(0, 5).map((j) => j.stage),
-        billed,
-        notePreview: c.notes,
+        billed, notePreview: c.notes,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
